@@ -71,7 +71,6 @@ def get_data_loader(data_ary:np.ndarray,
         data_tensor = torch.from_numpy(data_ary.astype(np.float32))
         cell_type_tensor = torch.from_numpy(cell_type.astype(np.float32))
         dataset = TensorDataset(data_tensor,cell_type_tensor)
-        pdb.set_trace()
         generator = torch.Generator(device='cuda')
         return DataLoader(
                 dataset, batch_size=batch_size, shuffle=is_shuffle, drop_last=False , generator=generator) #, generator=torch.Generator(device = 'cuda') 
