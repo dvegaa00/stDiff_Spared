@@ -12,7 +12,6 @@ import pdb
 
 from .stDiff_scheduler import NoiseScheduler
 
-pdb.set_trace()
 def normal_train_stDiff(model,
                  dataloader,
                  lr: float = 1e-4,
