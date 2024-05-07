@@ -144,7 +144,9 @@ class NoiseScheduler():
         s2 = self.sqrt_one_minus_alphas_cumprod[timesteps]
 
         s1 = s1.reshape(-1, 1).to(x_start.device)
+        #s1 = s1.view(len(timesteps), 1, 1).expand(-1, 128, 7).to(x_start.device)
         s2 = s2.reshape(-1, 1).to(x_start.device)
+        #s2 = s2.view(len(timesteps), 1, 1).expand(-1, 128, 7).to(x_start.device)
         return s1 * x_start + s2 * x_noise
 
     def undo(self, image_before_step, img_after_model, est_x_0, t, debug=False):

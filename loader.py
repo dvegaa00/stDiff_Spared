@@ -5,6 +5,7 @@ import torch
 import squidpy as sq
 import anndata as ad
 from tqdm import tqdm
+import scanpy as sc
 
 def get_spatial_neighbors(adata: ad.AnnData, n_hops: int, hex_geometry: bool) -> dict:
     """
@@ -26,10 +27,10 @@ def get_spatial_neighbors(adata: ad.AnnData, n_hops: int, hex_geometry: bool) ->
     # Compute spatial_neighbors
     if hex_geometry:
         sq.gr.spatial_neighbors(adata, coord_type='generic', n_neighs=6) # Hexagonal visium case
-
+        #sc.pp.neighbors(adata, n_neighbors=6, knn=True)
     # Get the adjacency matrix (binary matrix of shape spots x spots)
     adj_matrix = adata.obsp['spatial_connectivities']
-
+    
     # Define power matrix
     power_matrix = adj_matrix.copy() #(spots x spots)
     # Define the output matrix
@@ -49,11 +50,10 @@ def get_spatial_neighbors(adata: ad.AnnData, n_hops: int, hex_geometry: bool) ->
 
     # Define neighbors dict
     neighbors_dict_index = {}
-
     # Iterate through the rows of the output matrix
     for i in range(output_matrix.shape[0]):
         # Get the non-zero elements of the row (non zero means a neighbour)
-        non_zero_elements = output_matrix[i].nonzero()[1]
+        non_zero_elements = output_matrix[:,i].nonzero()[0]
         # Add the neighbors to the neighbors dicts. NOTE: the first index is the query obs
         #Key: int number (id of each spot) -> Value: list of spots ids
         neighbors_dict_index[i] = [i] + list(non_zero_elements)
@@ -76,11 +76,14 @@ def get_neigbors_dataset(dataset_name, prediction_layer):
     (n_neigbors + 1, n_genes) that has the information about the neigbors of teh corresponding spot.
     """
     #Dataset all info
-    dataset = get_dataset(dataset_name)
+    dataset = get_dataset(dataset_name).adata
+    #slide 0
+    slide = dataset.obs["slide_id"].unique()[0]
+    dataset = dataset[dataset.obs["slide_id"]==slide]
     #Get dict with all the neigbors info for each spot in the dataset
-    spatial_neighbors = get_spatial_neighbors(dataset.adata, n_hops=1, hex_geometry=True)
+    spatial_neighbors = get_spatial_neighbors(dataset, n_hops=1, hex_geometry=True)
     #Expression matrix (already applied post-processing)
-    expression_mtx = torch.tensor(dataset.adata.layers[prediction_layer])
+    expression_mtx = torch.tensor(dataset.layers[prediction_layer])
     #Empty list for saving data
     all_neigbors_info = []
     #Iterate over all the spots

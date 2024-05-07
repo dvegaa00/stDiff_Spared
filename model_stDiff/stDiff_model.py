@@ -35,11 +35,8 @@ class Attention2(nn.Module):
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
-
-
     
 def modulate(x, shift, scale):
-
     res = x * (1 + scale) + shift
     return res
 
@@ -109,7 +106,7 @@ class DiTblock(nn.Module):
     
     def forward(self,x,c):
         # Project condition to 6 * hiddensize and then slice it into 6 parts along the column.
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1) #dim cambiado de 1 a 2
         # attention blk
         x = x + gate_msa * self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
         # mlp
@@ -134,7 +131,7 @@ class FinalLayer(nn.Module):
 
     def forward(self, x, c):
         # shift scale
-        shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
+        shift, scale = self.adaLN_modulation(c).chunk(2, dim=1) #dim cambiado de 1 a 2
         x = modulate(self.norm_final(x), shift, scale)
         # projection
         x = self.linear(x)
@@ -164,7 +161,6 @@ class DiT_stDiff(nn.Module):
             mlp_ratio (float, optional): _description_. Defaults to 4.0.
         """        
         super().__init__()
-
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.depth = depth
@@ -231,9 +227,9 @@ class DiT_stDiff(nn.Module):
     def forward(self, x, t, y,**kwargs): 
         x = x.float()
         t = self.time_emb(t)
-
         y = self.cond_layer(y)
         # z = self.condi_emb(z)
+        #t = t.view(10, 1, 512).expand(-1, 128, -1)
         c = t + y
         # c = t
 

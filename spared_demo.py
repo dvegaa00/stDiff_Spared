@@ -30,6 +30,9 @@ import pdb
 import anndata as ad
 from spared.datasets import get_dataset
 from spared.datasets import SpatialDataset
+from spared.metrics import get_metrics
+
+from loader import *
 
 #SpatialDataset.process_dataset.clean_noise.get_spatial_neighbors
 
@@ -67,9 +70,10 @@ sp_data = pd.DataFrame(data=data_spatial_array, columns=sp_genes)
 sc_data = pd.DataFrame(data=data_seq_array, columns=sp_genes)
 
 #Training
-lr = 0.00016046744893538737 
+#lr = 0.00016046744893538737 
+lr = 0.001
 depth = 6 
-num_epoch = 900 
+num_epoch = 300 
 diffusion_step = 1500 
 batch_size = 2048 
 hidden_size = 512 
@@ -102,6 +106,7 @@ st = data_spatial_array
 data_seq_masked = seq * mask
 data_spatial_masked = st * mask
 
+#breakpoint()
 seq = seq * 2 - 1
 # seq.shape: (11226, 33)
 data_seq_masked = data_seq_masked * 2 - 1
@@ -114,18 +119,111 @@ data_spatial_masked = data_spatial_masked * 2 - 1
 #entrada son dos arrays
 #seq = adata.X
 #data_seq_masked = adata.X maskeado
+"""
 dataloader = get_data_loader(
     seq, # all gene
     data_seq_masked, # test gene = 0
     batch_size=batch_size, 
     is_shuffle=True)
-
+"""
 #SPARED
 adata = get_dataset("villacampa_lung_organoid")
 dataset=adata.adata
 st_data = dataset.layers["c_t_log1p"]
-#sq.gr.spatial_neighbors(dataset, coord_type='generic', n_neighs=6)
+
+#Get neighbors
+list_nn = get_neigbors_dataset('villacampa_lung_organoid', 'c_t_log1p')
+
+concatenate_tensor = torch.cat(list_nn, dim=1).T
+array_data = np.array(concatenate_tensor)
+mask_array = np.ones(array_data.shape)
+mask_array[:,0] = 0
+masked_data = array_data*mask_array
+
+dataloader = get_data_loader(
+    array_data, # all gene
+    masked_data, # test gene = 0
+    batch_size=batch_size, 
+    is_shuffle=True)
+
+seed = 1202
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+
+num_nn = 7
+mask = np.ones((num_nn), dtype='float32')
+mask[0] = 0
+
+model = DiT_stDiff(
+    input_size=num_nn,  
+    hidden_size=hidden_size, 
+    depth=depth,
+    num_heads=head,
+    classes=6, 
+    mlp_ratio=4.0,
+    dit_type='dit'
+)
+
+device = torch.device('cuda')
+model.to(device)
+
+diffusion_step = diffusion_step
+
+save_path_prefix = 'ckpt/demo_spared.pt'
+# train
+model.train()
+if not os.path.isfile(save_path_prefix):
+
+    normal_train_stDiff(model,
+                            dataloader=dataloader,
+                            lr=lr,
+                            num_epoch=num_epoch,
+                            diffusion_step=diffusion_step,
+                            device=device,
+                            pred_type='noise',
+                            mask=mask)
+
+    torch.save(model.state_dict(), save_path_prefix)
+else:
+    model.load_state_dict(torch.load(save_path_prefix))
+
+breakpoint()
+
+gt = masked_data
+#adata.X maskeado
+noise_scheduler = NoiseScheduler(
+    num_timesteps=diffusion_step,
+    beta_schedule='cosine'
+)
+
+dataloader = get_data_loader(
+    masked_data, # test gene = 0
+    masked_data, # test gene = 0
+    batch_size=batch_size, 
+    is_shuffle=False)
 
 
-pdb.set_trace()
+diffusion_step = 100
+model.eval()
+imputation = sample_stDiff(model,
+                            device=device,
+                            dataloader=dataloader,
+                            noise_scheduler=noise_scheduler,
+                            mask=mask,
+                            gt=gt,
+                            num_step=diffusion_step,
+                            sample_shape=(gt.shape[0], gt.shape[1]),
+                            is_condi=True,
+                            sample_intermediate=diffusion_step,
+                            model_pred_type='noise',
+                            is_classifier_guidance=False,
+                            omega=0.2)
+
+imputation_reshape = imputation[:,0].reshape(416, 128)
+array_data_reshape = array_data[:,0].reshape(416, 128)
+mask_bolean = np.ones([416,128]).astype(bool)
+
+metrics_dict = get_metrics(array_data_reshape, imputation_reshape, mask_bolean)
+breakpoint()
 

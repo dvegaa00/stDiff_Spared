@@ -71,9 +71,9 @@ def normal_train_stDiff(model,
             
             x_t = noise_scheduler.add_noise(x,
                                             noise,
-                                            timesteps=timesteps)
+                                            timesteps=timesteps.cpu())
             # x_t.shape: torch.Size([2048, 33])
-            
+            # breakpoint()
             mask = torch.tensor(mask).to(device)
             # mask.shape: torch.Size([33])
             
