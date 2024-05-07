@@ -8,11 +8,9 @@ from einops import rearrange, repeat
 
 from ray.air import session
 import os
-import pdb
 
 from .stDiff_scheduler import NoiseScheduler
 
-pdb.set_trace()
 def normal_train_stDiff(model,
                  dataloader,
                  lr: float = 1e-4,
@@ -60,8 +58,8 @@ def normal_train_stDiff(model,
         for i, (x, x_cond) in enumerate(dataloader): 
             #pdb.set_trace()
             x, x_cond = x.float().to(device), x_cond.float().to(device)
-            # x.shape: torch.Size([2048, 33])
-            # x_cond.shape: torch.Size([2048, 33])
+            # x.shape: torch.Size([2048, 33]) seq_data
+            # x_cond.shape: torch.Size([2048, 33]) masked_seq_data
             # celltype = celltype.to(device)
 
             noise = torch.randn(x.shape).to(device)
