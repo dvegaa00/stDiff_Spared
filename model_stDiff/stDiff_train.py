@@ -1,4 +1,5 @@
 import torch
+import torch
 import numpy as np
 import os
 import torch.nn as nn
@@ -10,8 +11,11 @@ from ray.air import session
 import os
 import pdb
 from spared.metrics import get_metrics
+from spared.metrics import get_metrics
 
 from .stDiff_scheduler import NoiseScheduler
+from model_stDiff.sample import sample_stDiff
+from utils import test_function
 from model_stDiff.sample import sample_stDiff
 from utils import test_function
 
@@ -20,6 +24,7 @@ def normal_train_stDiff(model,
                  valid_dataloader,
                  valid_data,
                  valid_masked_data,
+                 mask_valid,
                  lr: float = 1e-4,
                  num_epoch: int = 1400,
                  pred_type: str = 'noise',
@@ -61,10 +66,11 @@ def normal_train_stDiff(model,
 
     model.train()
     min_mse = np.inf
+    min_mse = np.inf
     for epoch in t_epoch:
         epoch_loss = 0.
         for i, (x, x_cond, mask) in enumerate(train_dataloader): 
-            breakpoint()
+            #The mask is a binary array, the 1's are the masked data
             x, x_cond = x.float().to(device), x_cond.float().to(device)
             # x.shape: torch.Size([2048, 33])
             # x_cond.shape: torch.Size([2048, 33])
@@ -80,7 +86,6 @@ def normal_train_stDiff(model,
                                             noise,
                                             timesteps=timesteps.cpu())
             # x_t.shape: torch.Size([2048, 33])
-            # breakpoint()
             mask = torch.tensor(mask).to(device)
             # mask.shape: torch.Size([33])
             
@@ -111,7 +116,7 @@ def normal_train_stDiff(model,
                                         test_data=valid_data, 
                                         test_masked_data=valid_masked_data, 
                                         model=model,
-                                        mask=mask,
+                                        mask=mask_valid,
                                         diffusion_step=diffusion_step,
                                         device=device)
         
@@ -119,3 +124,4 @@ def normal_train_stDiff(model,
                 min_mse = metrics_dict["MSE"]
                 torch.save(model.state_dict(), save_path)
         
+

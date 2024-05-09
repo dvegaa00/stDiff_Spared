@@ -100,7 +100,4 @@ def data_augment(adata: AnnData, fixed: bool, noise_std):
     
     
     return merge_adata
-    
-
-    
-    
+ 

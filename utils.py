@@ -25,6 +25,7 @@ def test_function(test_dataloader, test_data, test_masked_data, model, mask, dif
         num_timesteps=diffusion_step,
         beta_schedule='cosine'
     )
+    
     # inference using test split
     imputation = sample_stDiff(model,
                         device=device,

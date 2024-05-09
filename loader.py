@@ -66,14 +66,15 @@ def build_neighborhood_from_hops(spatial_neighbors, expression_mtx, idx):
     # Get nn indexes for the n_hop required
     nn_index_list = spatial_neighbors[idx] #Obtain the ids of the spots that are neigbors of idx
     #Index the expression matrix (X processed) and obtain the neccesary data
+    #TODO: preguntarle a Daniela
     exp_matrix = expression_mtx[nn_index_list].type('torch.FloatTensor')
-    return exp_matrix #shape (n_neigbors + 1, n_genes)
+    return exp_matrix #shape (n_neigbors, n_genes)
 
 
 def get_neigbors_dataset(dataset_name, prediction_layer):
     """
     This function recives the name of a dataset and pred_layer. Returns a list of len = number of spots, each position of the list is an array 
-    (n_neigbors + 1, n_genes) that has the information about the neigbors of teh corresponding spot.
+    (n_neigbors + 1, n_genes) that has the information about the neigbors of the corresponding spot.
     """
     all_neighbors_info = []
     #Dataset all info
@@ -110,4 +111,4 @@ def get_neigbors_dataset(dataset_name, prediction_layer):
     return all_neighbors_info
 
 #Test
-#get_neigbors_dataset('villacampa_lung_organoid', 'c_t_log1p')
+get_neigbors_dataset('villacampa_lung_organoid', 'c_t_log1p')

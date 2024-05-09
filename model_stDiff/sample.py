@@ -7,7 +7,7 @@ import pdb
 def model_sample_stDiff(model, device, dataloader, total_sample, time, is_condi, condi_flag):
     noise = []
     i = 0
-    for _, x_cond in dataloader: 
+    for _, _, x_cond in dataloader: 
         x_cond = x_cond.float().to(device) 
         t = torch.from_numpy(np.repeat(time, x_cond.shape[0])).long().to(device)
         # celltype = celltype.to(device)
@@ -53,11 +53,12 @@ def sample_stDiff(model,
     Returns:
         _type_: recon_x
     """
+    
     model.eval()
     breakpoint()
     x_t = torch.randn(sample_shape[0], sample_shape[1]).to(device)
     timesteps = list(range(num_step))[::-1]  
-    mask = torch.tensor(mask).to(device)
+    mask = torch.tensor(mask.astype(int)).to(device)
     gt = torch.tensor(gt).to(device)
     x_t =  x_t * (1 - mask) + gt * mask
     #agregando ruido en lo que no esta maskeado y le sumo el GT (multiplicado por la mascara)

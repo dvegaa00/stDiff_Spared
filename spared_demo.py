@@ -38,12 +38,24 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Code for expression prediction using contrastive learning implementation.')
 # Dataset parameters #####################################################################################################################################################################
+parser.add_argument('--dataset', type=str, default='villacampa_lung_organoid',  help='Dataset to use.')
+parser.add_argument('--prediction_layer',  type=str,  default='c_d_log1p', help='The prediction layer from the dataset to use.')
+parser.add_argument('--lr',type=float,default=0.001,help='lr to use')
+parser.add_argument('--save_path',type=str,default='ckpt/model.pt',help='name model save path')
+
+args = parser.parse_args()
+from utils import *
+import argparse
+
+parser = argparse.ArgumentParser(description='Code for expression prediction using contrastive learning implementation.')
+# Dataset parameters #####################################################################################################################################################################
 parser.add_argument('--lr',type=float,default=0.001,help='lr to use')
 parser.add_argument('--save_path',type=str,default='ckpt/model.pt',help='name model save path')
 args = parser.parse_args()
 
 #Training
 #lr = 0.00016046744893538737 
+lr = args.lr
 lr = args.lr
 depth = 6 
 num_epoch = 900 
@@ -54,34 +66,34 @@ head = 16
 device = torch.device('cuda')
 
 #SPARED
-adata = get_dataset("villacampa_lung_organoid")
+adata = get_dataset(args.dataset)
 dataset=adata.adata
 splits = dataset.obs["split"].unique().tolist()
+pred_layer = args.prediction_layer
 
 prob_tensor = get_mask_prob_tensor(masking_method="scale_factor", dataset=adata, mask_prob=0.3, scale_factor=0.2)
-mask_exp_matrix(adata=dataset, pred_layer="c_d_log1p", mask_prob_tensor=prob_tensor, device=device)
+mask_exp_matrix(adata=dataset, pred_layer=pred_layer, mask_prob_tensor=prob_tensor, device=device)
 
 # Define splits
 ## Train
 train_adata = dataset[dataset.obs["split"]=="train"]
-st_data_train = train_adata.layers["c_d_log1p"]
+st_data_train = train_adata.layers[pred_layer]
 st_data_masked_train = train_adata.layers["masked_expression_matrix"]
 mask_train = train_adata.layers["random_mask"]
 
 ## Validation
 valid_adata = dataset[dataset.obs["split"]=="val"]
-st_data_valid = valid_adata.layers["c_d_log1p"]
+st_data_valid = valid_adata.layers[pred_layer]
 st_data_masked_valid = valid_adata.layers["masked_expression_matrix"]
 mask_valid = valid_adata.layers["random_mask"]
 
 ## Test
 if "test" in splits:
     test_adata = dataset[dataset.obs["split"]=="test"]
-    st_data_test = test_adata.layers["c_d_log1p"]
+    st_data_test = test_adata.layers[pred_layer]
     st_data_masked_test = test_adata.layers["masked_expression_matrix"]
     mask_test = test_adata.layers["random_mask"]
 
-breakpoint()
 
 # Define train and valid dataloaders
 train_dataloader = get_data_loader(
@@ -98,10 +110,46 @@ valid_dataloader = get_data_loader(
     batch_size=batch_size, 
     is_shuffle=True)
 
+# Define test dataloader if it exists
+if 'test' in splits:
+    test_dataloader = get_data_loader(
+    st_data_masked_test, 
+    st_data_masked_test,
+    mask_test, 
+    batch_size=batch_size, 
+    is_shuffle=True)
+
 """
 #Get neighbors per split
 list_nn = get_neigbors_dataset('villacampa_lung_organoid', 'c_t_log1p')
 
+list_nn_train = []
+for slide in list_nn[0]:
+    list_nn_train += slide
+
+list_nn_valid = []
+for slide in list_nn[1]:
+    list_nn_valid += slide
+
+if len(list_nn) == 3:
+    list_nn_test = []
+    for slide in list_nn[2]:
+        list_nn_test += slide
+
+def prepare_data(list_nn): 
+    #returns the data as concatenated tensor as well as the masked data
+    concatenate_tensor = torch.cat(list_nn, dim=1).T
+    array_data = np.array(concatenate_tensor)
+    mask_array = np.ones(array_data.shape)
+    mask_array[:,0] = 0
+    masked_data = array_data*mask_array
+    return array_data, masked_data
+
+
+train_data, train_masked_data = prepare_data(list_nn_train)
+train_dataloader = get_data_loader(
+    train_data, 
+    train_masked_data, 
 list_nn_train = []
 for slide in list_nn[0]:
     list_nn_train += slide
@@ -141,11 +189,16 @@ valid_dataloader = get_data_loader(
     
 """
 
+    
+
 seed = 1202
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
+num_nn = 128
+#mask = np.ones((num_nn), dtype='float32')
+#mask[0] = 0
 num_nn = 128
 #mask = np.ones((num_nn), dtype='float32')
 #mask[0] = 0
@@ -165,6 +218,7 @@ model.to(device)
 diffusion_step = diffusion_step
 
 save_path_prefix = args.save_path
+save_path_prefix = args.save_path
 # train
 breakpoint()
 model.train()
@@ -175,6 +229,7 @@ if not os.path.isfile(save_path_prefix):
                             valid_dataloader=valid_dataloader,
                             valid_data = st_data_valid,
                             valid_masked_data = st_data_masked_valid,
+                            mask_valid = mask_valid,
                             lr=lr,
                             num_epoch=num_epoch,
                             diffusion_step=diffusion_step,
@@ -188,22 +243,14 @@ if not os.path.isfile(save_path_prefix):
 
 if "test" in splits:
     model.load_state_dict(torch.load(save_path_prefix))
-    test_data, test_masked_data = prepare_data(list_nn_test)
-    test_dataloader = get_data_loader(
-        test_masked_data, 
-        test_masked_data, 
-        batch_size=batch_size, 
-        is_shuffle=False)
     
     test_metrics = test_function(test_dataloader=test_dataloader, 
-                                 test_data=test_data, 
-                                 test_masked_data=test_masked_data, 
-                                 mask=mask,
+                                 test_data=st_data_test, 
+                                 test_masked_data=st_data_masked_test, 
+                                 mask=mask_test,
                                  model=model,
                                  diffusion_step=diffusion_step,
                                  device=device)
 
     print(test_metrics)
-
-    
 
