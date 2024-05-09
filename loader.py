@@ -75,24 +75,39 @@ def get_neigbors_dataset(dataset_name, prediction_layer):
     This function recives the name of a dataset and pred_layer. Returns a list of len = number of spots, each position of the list is an array 
     (n_neigbors + 1, n_genes) that has the information about the neigbors of teh corresponding spot.
     """
+    all_neighbors_info = []
     #Dataset all info
     dataset = get_dataset(dataset_name).adata
-    #slide 0
-    slide = dataset.obs["slide_id"].unique()[0]
-    dataset = dataset[dataset.obs["slide_id"]==slide]
-    #Get dict with all the neigbors info for each spot in the dataset
-    spatial_neighbors = get_spatial_neighbors(dataset, n_hops=1, hex_geometry=True)
-    #Expression matrix (already applied post-processing)
-    expression_mtx = torch.tensor(dataset.layers[prediction_layer])
-    #Empty list for saving data
-    all_neigbors_info = []
-    #Iterate over all the spots
-    for idx in tqdm(spatial_neighbors.keys()):
-        # Obtainb expression matrix just wiht the neigbors of the corresponding spot
-        neigbors_exp_matrix = build_neighborhood_from_hops(spatial_neighbors, expression_mtx, idx)
-        all_neigbors_info.append(neigbors_exp_matrix)
+    #get dataset splits
+    splits = dataset.obs["split"].unique().tolist()
+    #iterate over split adata
+    for split in splits:
+        split_neighbors_info = []
+        adata = dataset[dataset.obs["split"]==split]
+        # get slides for the correspoding split
+        slides = adata.obs["slide_id"].unique().tolist()
+        #iterate over slides and get the neighbors info for every slide
+        for slide in slides:
+            adata_slide = dataset[dataset.obs["slide_id"]==slide]
+            #Get dict with all the neigbors info for each spot in the dataset
+            spatial_neighbors = get_spatial_neighbors(adata_slide, n_hops=1, hex_geometry=True)
+            #Expression matrix (already applied post-processing)
+            expression_mtx = torch.tensor(dataset.layers[prediction_layer])
+            #Empty list for saving data
+            slide_neighbors_info = []
+            #Iterate over all the spots
+            for idx in tqdm(spatial_neighbors.keys()):
+                # Obtainb expression matrix just wiht the neigbors of the corresponding spot
+                neigbors_exp_matrix = build_neighborhood_from_hops(spatial_neighbors, expression_mtx, idx)
+                slide_neighbors_info.append(neigbors_exp_matrix)
 
-    return all_neigbors_info
+            #append slide neighbors info into corresponding split list
+            split_neighbors_info.append(slide_neighbors_info)
+
+        #append split neighbors info into the complete list
+        all_neighbors_info.append(split_neighbors_info)
+
+    return all_neighbors_info
 
 #Test
 #get_neigbors_dataset('villacampa_lung_organoid', 'c_t_log1p')

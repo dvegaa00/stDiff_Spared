@@ -9,11 +9,17 @@ from einops import rearrange, repeat
 from ray.air import session
 import os
 import pdb
+from spared.metrics import get_metrics
 
 from .stDiff_scheduler import NoiseScheduler
+from model_stDiff.sample import sample_stDiff
+from utils import test_function
 
 def normal_train_stDiff(model,
-                 dataloader,
+                 train_dataloader,
+                 valid_dataloader,
+                 valid_data,
+                 valid_masked_data,
                  lr: float = 1e-4,
                  num_epoch: int = 1400,
                  pred_type: str = 'noise',
@@ -21,7 +27,8 @@ def normal_train_stDiff(model,
                  device=torch.device('cuda'),
                  is_tqdm: bool = True,
                  is_tune: bool = False,
-                 mask = None):
+                 save_path = "ckpt/demo_spared.pt"):
+    #mask = None 
     """
 
     Args:
@@ -53,11 +60,11 @@ def normal_train_stDiff(model,
         t_epoch = range(num_epoch)
 
     model.train()
-
+    min_mse = np.inf
     for epoch in t_epoch:
         epoch_loss = 0.
-        for i, (x, x_cond) in enumerate(dataloader): 
-            #pdb.set_trace()
+        for i, (x, x_cond, mask) in enumerate(train_dataloader): 
+            breakpoint()
             x, x_cond = x.float().to(device), x_cond.float().to(device)
             # x.shape: torch.Size([2048, 33])
             # x_cond.shape: torch.Size([2048, 33])
@@ -97,3 +104,18 @@ def normal_train_stDiff(model,
             t_epoch.set_postfix_str(f'{pred_type} loss:{epoch_loss:.5f}')  # type: ignore
         if is_tune:
             session.report({'loss': epoch_loss})
+        
+        # compare MSE metrics and save best model
+        if epoch % (num_epoch//10) == 0:
+            metrics_dict = test_function(test_dataloader=valid_dataloader, 
+                                        test_data=valid_data, 
+                                        test_masked_data=valid_masked_data, 
+                                        model=model,
+                                        mask=mask,
+                                        diffusion_step=diffusion_step,
+                                        device=device)
+        
+            if metrics_dict["MSE"] < min_mse:
+                min_mse = metrics_dict["MSE"]
+                torch.save(model.state_dict(), save_path)
+        

@@ -23,7 +23,6 @@ def model_sample_stDiff(model, device, dataloader, total_sample, time, is_condi,
 def sample_stDiff(model,
                 dataloader,
                 noise_scheduler,
-                mask = None,
                 gt = None,
                 device=torch.device('cuda:1'),
                 num_step=1000,
@@ -33,6 +32,7 @@ def sample_stDiff(model,
                 model_pred_type: str = 'noise',
                 is_classifier_guidance=False,
                 omega=0.1):
+    #mask = None
     """_summary_
 
     Args:
@@ -54,6 +54,7 @@ def sample_stDiff(model,
         _type_: recon_x
     """
     model.eval()
+    breakpoint()
     x_t = torch.randn(sample_shape[0], sample_shape[1]).to(device)
     timesteps = list(range(num_step))[::-1]  
     mask = torch.tensor(mask).to(device)

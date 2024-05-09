@@ -107,6 +107,7 @@ data_spatial_masked = data_spatial_masked * 2 - 1
 #entrada son dos arrays
 #seq = adata.X
 #data_seq_masked = adata.X maskeado
+breakpoint()
 dataloader = get_data_loader(
     seq, # all gene
     data_seq_masked, # test gene = 0
