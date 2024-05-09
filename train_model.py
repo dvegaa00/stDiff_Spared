@@ -24,7 +24,7 @@ warnings.filterwarnings('ignore')
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 from process_stDiff.data import *
-import pdb
+
 
 # ******** preprocess ********
 adata_spatial = sc.read_h5ad('datasets/sp/' + 'dataset2_spatial_33.h5ad')
@@ -183,7 +183,6 @@ imputation = sample_stDiff(model,
                             is_classifier_guidance=False,
                             omega=0.2)
 
-pdb.set_trace()
 #sample_shape=(spots, genes)
 data_spatial_masked[:, gene_ids_test] = imputation[:, gene_ids_test]
 
