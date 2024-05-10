@@ -17,7 +17,9 @@ from .stDiff_scheduler import NoiseScheduler
 from model_stDiff.sample import sample_stDiff
 from utils import test_function
 from model_stDiff.sample import sample_stDiff
-from utils import test_function
+from utils import *
+
+import matplotlib.pyplot as plt
 
 def normal_train_stDiff(model,
                  train_dataloader,
@@ -25,6 +27,7 @@ def normal_train_stDiff(model,
                  valid_data,
                  valid_masked_data,
                  mask_valid,
+                 max_norm,
                  lr: float = 1e-4,
                  num_epoch: int = 1400,
                  pred_type: str = 'noise',
@@ -32,7 +35,8 @@ def normal_train_stDiff(model,
                  device=torch.device('cuda'),
                  is_tqdm: bool = True,
                  is_tune: bool = False,
-                 save_path = "ckpt/demo_spared.pt"):
+                 save_path = "ckpt/demo_spared.pt",
+                 dataset_name=None):
     #mask = None 
     """
 
@@ -66,7 +70,7 @@ def normal_train_stDiff(model,
 
     model.train()
     min_mse = np.inf
-    min_mse = np.inf
+    loss_visualization = []
     for epoch in t_epoch:
         epoch_loss = 0.
         for i, (x, x_cond, mask) in enumerate(train_dataloader): 
@@ -86,6 +90,7 @@ def normal_train_stDiff(model,
                                             noise,
                                             timesteps=timesteps.cpu())
             # x_t.shape: torch.Size([2048, 33])
+            #breakpoint()
             mask = torch.tensor(mask).to(device)
             # mask.shape: torch.Size([33])
             
@@ -96,8 +101,9 @@ def normal_train_stDiff(model,
             # noise_pred.shape: torch.Size([2048, 33])
             
             # loss = criterion(noise_pred, noise)
+            #max_train = torch.tensor(max_norm[0]).to(device)
+            #loss = criterion((noise*(1-mask))*max_train, (noise_pred*(1-mask))*max_train)
             loss = criterion(noise*(1-mask), noise_pred*(1-mask))
-
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)  # type: ignore
             optimizer.step()
@@ -105,6 +111,7 @@ def normal_train_stDiff(model,
             epoch_loss += loss.item()
 
         epoch_loss = epoch_loss / (i + 1)  # type: ignore
+        loss_visualization.append(epoch_loss)
         if is_tqdm:
             t_epoch.set_postfix_str(f'{pred_type} loss:{epoch_loss:.5f}')  # type: ignore
         if is_tune:
@@ -117,11 +124,26 @@ def normal_train_stDiff(model,
                                         test_masked_data=valid_masked_data, 
                                         model=model,
                                         mask=mask_valid,
+                                        max_norm = max_norm[1],
                                         diffusion_step=diffusion_step,
                                         device=device)
-        
+
             if metrics_dict["MSE"] < min_mse:
                 min_mse = metrics_dict["MSE"]
                 torch.save(model.state_dict(), save_path)
+            save_metrics_to_csv("/home/dvegaa/stDiff_Spared/output/metrics.csv", dataset_name, "valid", metrics_dict)
+    
+    #Plot loss    
+    epoch_array = np.arange(num_epoch)
+    loss_visualization = np.array(loss_visualization)
+    
+    plt.figure()
+    plt.plot(epoch_array, loss_visualization)
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.title(f"Dataset: {dataset_name}")
+    plt.tight_layout()
+    plt.savefig(f"/home/dvegaa/stDiff_Spared/loss_figures/Loss {dataset_name}.jpg")
+    
         
 

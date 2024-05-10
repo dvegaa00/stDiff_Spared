@@ -15,9 +15,10 @@ warnings.filterwarnings('ignore')
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 from spared.metrics import get_metrics
+import csv
 
 
-def test_function(test_dataloader, test_data, test_masked_data, model, mask, diffusion_step, device):
+def test_function(test_dataloader, test_data, test_masked_data, model, mask, max_norm, diffusion_step, device):
     # Sample model using test set
     gt = test_masked_data
     # Define noise scheduler
@@ -28,9 +29,9 @@ def test_function(test_dataloader, test_data, test_masked_data, model, mask, dif
     
     # inference using test split
     imputation = sample_stDiff(model,
-                        device=device,
                         dataloader=test_dataloader,
                         noise_scheduler=noise_scheduler,
+                        device=device,
                         mask=mask,
                         gt=gt,
                         num_step=diffusion_step,
@@ -41,12 +42,15 @@ def test_function(test_dataloader, test_data, test_masked_data, model, mask, dif
                         is_classifier_guidance=False,
                         omega=0.2)
 
+    #imputation = (imputation  + 1) / 2
+    #test_data = (test_data  + 1) / 2
     # get metrics
-    imputation_reshape = imputation[:,0].reshape(-1, 128)
-    test_data_reshape = test_data[:,0].reshape(-1, 128)
-    mask_boolean = np.ones(test_data_reshape.shape).astype(bool)
-
-    metrics_dict = get_metrics(test_data_reshape, imputation_reshape, mask_boolean)
+    #imputation_reshape = imputation[:,0].reshape(-1, 128)
+    #test_data_reshape = test_data[:,0].reshape(-1, 128)
+    mask_boolean = (1-mask).astype(bool)
+    test_data = test_data*max_norm
+    imputation = imputation*max_norm
+    metrics_dict = get_metrics(test_data, imputation, mask_boolean)
     return metrics_dict
 
 def get_mask_prob_tensor(masking_method, dataset, mask_prob=0.3, scale_factor=0.8):
@@ -107,7 +111,6 @@ def mask_exp_matrix(adata: ad.AnnData, pred_layer: str, mask_prob_tensor: torch.
     """
 
     # Extract the expression matrix
-    #breakpoint()
     expression_mtx = torch.tensor(adata.layers[pred_layer])
     # Calculate the mask based on probability tensor
     random_mask = torch.rand(expression_mtx.shape).to(device) < mask_prob_tensor.to(device)
@@ -122,3 +125,37 @@ def mask_exp_matrix(adata: ad.AnnData, pred_layer: str, mask_prob_tensor: torch.
     adata.layers['random_mask'] = np.asarray(random_mask.cpu())
 
     return adata
+
+def save_metrics_to_csv(path, dataset_name, split, metrics):
+    """
+    Creates or edits a .csv file with the dataset name as the title and the metrics dictionary as a string.
+
+    :param path: Path to the .csv file
+    :param dataset_name: The name of the dataset to be used as the title
+    :param metrics: Dictionary containing metric names and values
+    """
+    # Ensure the directory for the path exists
+    #directory = os.path.dirname(file_path)
+    #if not os.path.exists(directory):
+    #    os.makedirs(directory)
+
+    file_exists = os.path.isfile(path)
+
+    with open(path, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        
+        # Write the title (dataset name) if the file does not exist
+        if not file_exists:
+            writer.writerow(["Dataset", "Split", "MSE", "PCC-Gene"])
+
+        # Convert the metrics dictionary to a string
+        #metrics_str = '; '.join([f'{k}: {v}' for k, v in metrics.items()])
+
+        # Write the dataset name and the stringified metrics
+        writer.writerow([dataset_name, split, str(metrics["MSE"]), str(metrics["PCC-Gene"])])
+
+metrics_dict = {
+    'MSE': 0.2,
+    'MAE': 0.7,
+    'PCC-Gene': 0.5
+}

@@ -40,27 +40,17 @@ parser = argparse.ArgumentParser(description='Code for expression prediction usi
 # Dataset parameters #####################################################################################################################################################################
 parser.add_argument('--dataset', type=str, default='villacampa_lung_organoid',  help='Dataset to use.')
 parser.add_argument('--prediction_layer',  type=str,  default='c_d_log1p', help='The prediction layer from the dataset to use.')
-parser.add_argument('--lr',type=float,default=0.001,help='lr to use')
-parser.add_argument('--save_path',type=str,default='ckpt/model.pt',help='name model save path')
-
-args = parser.parse_args()
-from utils import *
-import argparse
-
-parser = argparse.ArgumentParser(description='Code for expression prediction using contrastive learning implementation.')
-# Dataset parameters #####################################################################################################################################################################
-parser.add_argument('--lr',type=float,default=0.001,help='lr to use')
+parser.add_argument('--lr',type=float,default=0.00016046744893538737,help='lr to use')
 parser.add_argument('--save_path',type=str,default='ckpt/model.pt',help='name model save path')
 args = parser.parse_args()
 
 #Training
 #lr = 0.00016046744893538737 
 lr = args.lr
-lr = args.lr
 depth = 6 
-num_epoch = 900 
+num_epoch = 3000
 diffusion_step = 1500 
-batch_size = 50
+batch_size = 256
 hidden_size = 512 
 head = 16
 device = torch.device('cuda')
@@ -71,29 +61,52 @@ dataset=adata.adata
 splits = dataset.obs["split"].unique().tolist()
 pred_layer = args.prediction_layer
 
-prob_tensor = get_mask_prob_tensor(masking_method="scale_factor", dataset=adata, mask_prob=0.3, scale_factor=0.2)
+prob_tensor = get_mask_prob_tensor(masking_method="mask_prob", dataset=adata, mask_prob=0.3, scale_factor=0.8)
 mask_exp_matrix(adata=dataset, pred_layer=pred_layer, mask_prob_tensor=prob_tensor, device=device)
 
-# Define splits
+### Define splits
 ## Train
 train_adata = dataset[dataset.obs["split"]=="train"]
-st_data_train = train_adata.layers[pred_layer]
-st_data_masked_train = train_adata.layers["masked_expression_matrix"]
+# Define data
+st_data_train = train_adata.layers[pred_layer] 
+# Define masked data
+st_data_masked_train = train_adata.layers["masked_expression_matrix"] 
+# Define mask
 mask_train = train_adata.layers["random_mask"]
+mask_train = (1-mask_train)
+# Normalize data
+max_train = st_data_train.max()
+st_data_train = st_data_train/max_train
+st_data_masked_train = st_data_masked_train/max_train
 
 ## Validation
 valid_adata = dataset[dataset.obs["split"]=="val"]
-st_data_valid = valid_adata.layers[pred_layer]
-st_data_masked_valid = valid_adata.layers["masked_expression_matrix"]
+# Define data
+st_data_valid = valid_adata.layers[pred_layer] 
+# Define masked data
+st_data_masked_valid = valid_adata.layers["masked_expression_matrix"] 
+# Define mask
 mask_valid = valid_adata.layers["random_mask"]
+mask_valid = (1-mask_valid)
+# Nomalize data
+max_valid = st_data_valid.max()
+st_data_valid = st_data_valid/max_valid
+st_data_masked_valid = st_data_masked_valid/max_valid
 
 ## Test
 if "test" in splits:
     test_adata = dataset[dataset.obs["split"]=="test"]
-    st_data_test = test_adata.layers[pred_layer]
-    st_data_masked_test = test_adata.layers["masked_expression_matrix"]
+    # Define data
+    st_data_test = test_adata.layers[pred_layer] 
+    # Define masked data
+    st_data_masked_test = test_adata.layers["masked_expression_matrix"] 
+    # Define mask
     mask_test = test_adata.layers["random_mask"]
-
+    mask_test = (1-mask_test)
+    # Normalize data
+    max_test = st_data_test.max()
+    st_data_test = st_data_test/max_test
+    st_data_masked_test = st_data_masked_test/max_test
 
 # Define train and valid dataloaders
 train_dataloader = get_data_loader(
@@ -189,19 +202,14 @@ valid_dataloader = get_data_loader(
     
 """
 
-    
-
 seed = 1202
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
-num_nn = 128
 #mask = np.ones((num_nn), dtype='float32')
 #mask[0] = 0
-num_nn = 128
-#mask = np.ones((num_nn), dtype='float32')
-#mask[0] = 0
+num_nn = dataset.shape[1]
 
 model = DiT_stDiff(
     input_size=num_nn,  
@@ -216,11 +224,8 @@ model = DiT_stDiff(
 model.to(device)
 
 diffusion_step = diffusion_step
-
-save_path_prefix = args.save_path
 save_path_prefix = args.save_path
 # train
-breakpoint()
 model.train()
 if not os.path.isfile(save_path_prefix):
 
@@ -230,12 +235,14 @@ if not os.path.isfile(save_path_prefix):
                             valid_data = st_data_valid,
                             valid_masked_data = st_data_masked_valid,
                             mask_valid = mask_valid,
+                            max_norm = [max_train, max_valid],
                             lr=lr,
                             num_epoch=num_epoch,
                             diffusion_step=diffusion_step,
                             device=device,
                             pred_type='noise',
-                            save_path=save_path_prefix)
+                            save_path=save_path_prefix,
+                            dataset_name=args.dataset)
 
     #torch.save(model.state_dict(), save_path_prefix)
 #else:
@@ -248,9 +255,11 @@ if "test" in splits:
                                  test_data=st_data_test, 
                                  test_masked_data=st_data_masked_test, 
                                  mask=mask_test,
+                                 max_norm = max_test,
                                  model=model,
                                  diffusion_step=diffusion_step,
                                  device=device)
 
-    print(test_metrics)
+    save_metrics_to_csv("/home/dvegaa/stDiff_Spared/output/metrics.csv", args.dataset, "test", test_metrics)
+    #print(test_metrics)
 

@@ -62,8 +62,8 @@ sc_data = pd.DataFrame(data=data_seq_array, columns=sp_genes)
 #Training
 lr = 0.00016046744893538737 
 depth = 6 
-num_epoch = 900 
-diffusion_step = 1500 
+num_epoch = 2000 
+diffusion_step = 100 
 batch_size = 2048 
 hidden_size = 512 
 head = 16
@@ -103,14 +103,15 @@ st = st * 2 - 1
 # st.shape: (3405, 33)
 data_spatial_masked = data_spatial_masked * 2 - 1
 # data_spatial_masked.shape: (3405, 33)
-
+new_mask = np.tile(mask, (seq.shape[0],1))
+breakpoint()
 #entrada son dos arrays
 #seq = adata.X
 #data_seq_masked = adata.X maskeado
-breakpoint()
 dataloader = get_data_loader(
     seq, # all gene
     data_seq_masked, # test gene = 0
+    new_mask, 
     batch_size=batch_size, 
     is_shuffle=True)
 
@@ -140,21 +141,24 @@ model.train()
 if not os.path.isfile(save_path_prefix):
 
     normal_train_stDiff(model,
-                            dataloader=dataloader,
+                            train_dataloader=dataloader,
+                            valid_dataloader=dataloader,
+                            valid_data = seq,
+                            valid_masked_data = data_seq_masked,
+                            mask_valid = new_mask.astype(bool),
                             lr=lr,
                             num_epoch=num_epoch,
                             diffusion_step=diffusion_step,
                             device=device,
                             pred_type='noise',
-                            mask=mask)
-
-    torch.save(model.state_dict(), save_path_prefix)
+                            save_path="ckpt/stDiff_model.pt",
+                            dataset_name="stDiff_data")
 else:
     model.load_state_dict(torch.load(save_path_prefix))
 
 
 # sample
-pdb.set_trace()
+breakpoint()
 gt = data_spatial_masked
 #adata.X maskeado
 noise_scheduler = NoiseScheduler(
@@ -184,6 +188,7 @@ imputation = sample_stDiff(model,
                             is_classifier_guidance=False,
                             omega=0.2)
 
+breakpoint()
 #sample_shape=(spots, genes)
 data_spatial_masked[:, gene_ids_test] = imputation[:, gene_ids_test]
 

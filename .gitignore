@@ -20,3 +20,5 @@ mean-std.ipynb
 spscope_output/
 output/
 spared/
+loss_figures/
+run_completion.sh
