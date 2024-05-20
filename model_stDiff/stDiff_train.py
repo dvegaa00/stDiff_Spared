@@ -1,24 +1,12 @@
 import torch
-import torch
 import numpy as np
 import os
 import torch.nn as nn
 from tqdm import tqdm
-from torch.utils.data import TensorDataset, DataLoader
-from einops import rearrange, repeat
-
 from ray.air import session
 import os
-import pdb
-from spared.metrics import get_metrics
-from spared.metrics import get_metrics
-
 from .stDiff_scheduler import NoiseScheduler
-from model_stDiff.sample import sample_stDiff
-from utils import test_function
-from model_stDiff.sample import sample_stDiff
 from utils import *
-
 import matplotlib.pyplot as plt
 
 def normal_train_stDiff(model,
@@ -51,13 +39,12 @@ def normal_train_stDiff(model,
     Raises:
         NotImplementedError: _description_
     """
-    #pdb.set_trace()
     noise_scheduler = NoiseScheduler(
         num_timesteps=diffusion_step,
         beta_schedule='cosine'
     )
 
-    #pdb.set_trace()
+    #Define Loss function
     criterion = nn.MSELoss()
     model.to(device)
 
@@ -119,9 +106,9 @@ def normal_train_stDiff(model,
         
         # compare MSE metrics and save best model
         if epoch % (num_epoch//10) == 0:
-            metrics_dict = test_function(test_dataloader=valid_dataloader, 
-                                        test_data=valid_data, 
-                                        test_masked_data=valid_masked_data, 
+            metrics_dict = inference_function(dataloader=valid_dataloader, 
+                                        data=valid_data, 
+                                        masked_data=valid_masked_data, 
                                         model=model,
                                         mask=mask_valid,
                                         max_norm = max_norm[1],
@@ -131,19 +118,13 @@ def normal_train_stDiff(model,
             if metrics_dict["MSE"] < min_mse:
                 min_mse = metrics_dict["MSE"]
                 torch.save(model.state_dict(), save_path)
-            save_metrics_to_csv("/home/dvegaa/stDiff_Spared/output/metrics.csv", dataset_name, "valid", metrics_dict)
+            save_metrics_to_csv(os.path.join("output","metrics.csv"), dataset_name, "valid", metrics_dict)
     
     #Plot loss    
     epoch_array = np.arange(num_epoch)
     loss_visualization = np.array(loss_visualization)
-    
-    plt.figure()
-    plt.plot(epoch_array, loss_visualization)
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.title(f"Dataset: {dataset_name}")
-    plt.tight_layout()
-    plt.savefig(f"/home/dvegaa/stDiff_Spared/loss_figures/Loss {dataset_name}.jpg")
+    #Ploting auxiliar function
+    plot_loss(epoch_array, loss_visualization, dataset_name)
     
         
 

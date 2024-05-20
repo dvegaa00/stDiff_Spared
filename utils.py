@@ -3,55 +3,45 @@ import os
 import numpy as np
 import warnings
 import torch
-import sys
-from os.path import join
-from IPython.display import display
 import anndata as ad
+import csv
+import argparse
+import matplotlib.pyplot as plt
 
 from model_stDiff.stDiff_scheduler import NoiseScheduler
 from model_stDiff.sample import sample_stDiff
 
+from spared.metrics import get_metrics
+
+
 warnings.filterwarnings('ignore')
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
-from spared.metrics import get_metrics
-import csv
+# Auxiliary function to use booleans in parser
+str2bool = lambda x: (str(x).lower() == 'true')
+str2intlist = lambda x: [int(i) for i in x.split(',')]
+str2floatlist = lambda x: [float(i) for i in x.split(',')]
+str2h_list = lambda x: [str2intlist(i) for i in x.split('//')[1:]]
 
 
-def test_function(test_dataloader, test_data, test_masked_data, model, mask, max_norm, diffusion_step, device):
-    # Sample model using test set
-    gt = test_masked_data
-    # Define noise scheduler
-    noise_scheduler = NoiseScheduler(
-        num_timesteps=diffusion_step,
-        beta_schedule='cosine'
-    )
-    
-    # inference using test split
-    imputation = sample_stDiff(model,
-                        dataloader=test_dataloader,
-                        noise_scheduler=noise_scheduler,
-                        device=device,
-                        mask=mask,
-                        gt=gt,
-                        num_step=diffusion_step,
-                        sample_shape=(gt.shape[0], gt.shape[1]),
-                        is_condi=True,
-                        sample_intermediate=diffusion_step,
-                        model_pred_type='noise',
-                        is_classifier_guidance=False,
-                        omega=0.2)
+def get_main_parser():
+    parser = argparse.ArgumentParser(description='Code for Diffusion Imputation Model')
+    # Dataset parameters #####################################################################################################################################################################
+    parser.add_argument('--dataset', type=str, default='villacampa_lung_organoid',  help='Dataset to use.')
+    parser.add_argument('--prediction_layer',  type=str,  default='c_d_log1p', help='The prediction layer from the dataset to use.')
+    # Train parameters #######################################################################################################################################################################
+    parser.add_argument('--lr',type=float,default=0.00016046744893538737,help='lr to use')
+    parser.add_argument('--save_path',type=str,default='ckpt/model.pt',help='name model save path')
+    parser.add_argument('--num_epoch', type=int, default=3000, help='Number of training epochs')
+    parser.add_argument('--diffusion_steps', type=int, default=1500, help='Number of diffusion steps')
+    parser.add_argument('--batch_size', type=int, default=256, help='The batch size to train model')
+    #Model parameters ########################################################################################################################################################################
+    parser.add_argument('--depth', type=int, default=6, help='' )
+    parser.add_argument('--hidden_size', type=int, default=512, help='Size of latent space')
+    parser.add_argument('--head', type=int, default=16, help='')
+    return parser
 
-    #imputation = (imputation  + 1) / 2
-    #test_data = (test_data  + 1) / 2
-    # get metrics
-    #imputation_reshape = imputation[:,0].reshape(-1, 128)
-    #test_data_reshape = test_data[:,0].reshape(-1, 128)
-    mask_boolean = (1-mask).astype(bool)
-    test_data = test_data*max_norm
-    imputation = imputation*max_norm
-    metrics_dict = get_metrics(test_data, imputation, mask_boolean)
-    return metrics_dict
+
 
 def get_mask_prob_tensor(masking_method, dataset, mask_prob=0.3, scale_factor=0.8):
     """
@@ -126,6 +116,96 @@ def mask_exp_matrix(adata: ad.AnnData, pred_layer: str, mask_prob_tensor: torch.
 
     return adata
 
+def inference_function(dataloader, data, masked_data, model, mask, max_norm, diffusion_step, device):
+    """
+    Function designed to do inference for validation and test steps.
+    Params:
+        -dataloader (Pytorch.Dataloader): dataloader containing batches, each element has -> (st_data, st_masked_data, mask)
+        -data (np.array): original st data
+        -masked_data (np.array): masked original st data
+        -model (diffusion model): diffusion model to do inference
+        -mask (np.array): mask used for data
+        -max_norm (float): max value of st data
+        -diffusion_step (int): diffusion step set in argparse
+        -device (): device cpu or cuda
+
+    Returns:
+        -metrics_dict (dict): dictionary with all the metrics
+    """
+    # Sample model using test set
+    gt = masked_data
+    # Define noise scheduler
+    noise_scheduler = NoiseScheduler(
+        num_timesteps=diffusion_step,
+        beta_schedule='cosine'
+    )
+    
+    # inference using test split
+    imputation = sample_stDiff(model,
+                        dataloader=dataloader,
+                        noise_scheduler=noise_scheduler,
+                        device=device,
+                        mask=mask,
+                        gt=gt,
+                        num_step=diffusion_step,
+                        sample_shape=(gt.shape[0], gt.shape[1]),
+                        is_condi=True,
+                        sample_intermediate=diffusion_step,
+                        model_pred_type='noise',
+                        is_classifier_guidance=False,
+                        omega=0.2)
+
+    #imputation = (imputation  + 1) / 2
+    #test_data = (test_data  + 1) / 2
+    # get metrics
+    #imputation_reshape = imputation[:,0].reshape(-1, 128)
+    #test_data_reshape = test_data[:,0].reshape(-1, 128)
+    mask_boolean = (1-mask).astype(bool)
+    data = data*max_norm
+    imputation = imputation*max_norm
+    metrics_dict = get_metrics(data, imputation, mask_boolean)
+    return metrics_dict
+
+def define_splits(dataset, split:str, pred_layer:str):
+    """
+    Function that extract the desired split from the dataset and then prepare neccesary data for 
+    the dataloader.
+    Args:
+        -dataset (dataset SpaRED class): class that has the adata.
+        -split (str): desired split to obtain
+    Returns:
+        - st_data: spatial data
+        - st_data_masked: masked spatial data
+        - mask: mask used for calculations
+    """
+    ## Train
+    adata = dataset[dataset.obs["split"]==split]
+    # Define data
+    st_data = adata.layers[pred_layer] 
+    # Define masked data
+    st_data_masked = adata.layers["masked_expression_matrix"] 
+    # Define mask
+    mask = adata.layers["random_mask"]
+    mask = (1-mask)
+    # Normalize data
+    max_data = st_data.max()
+    st_data = st_data/max_data
+    st_data_masked = st_data_masked/max_data
+
+    #st used just for train
+    return st_data, st_data_masked, mask, max_data
+
+#Auxiliar functions
+
+def plot_loss(epoch_array, loss_visualization, dataset_name):
+    plt.figure()
+    plt.plot(epoch_array, loss_visualization)
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.title(f"Dataset: {dataset_name}")
+    plt.tight_layout()
+    plt.savefig(os.path.join("loss_figures", f"Loss {dataset_name}.jpg"))
+
 def save_metrics_to_csv(path, dataset_name, split, metrics):
     """
     Creates or edits a .csv file with the dataset name as the title and the metrics dictionary as a string.
@@ -153,9 +233,3 @@ def save_metrics_to_csv(path, dataset_name, split, metrics):
 
         # Write the dataset name and the stringified metrics
         writer.writerow([dataset_name, split, str(metrics["MSE"]), str(metrics["PCC-Gene"])])
-
-metrics_dict = {
-    'MSE': 0.2,
-    'MAE': 0.7,
-    'PCC-Gene': 0.5
-}

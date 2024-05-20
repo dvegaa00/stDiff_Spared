@@ -1,58 +1,35 @@
 import numpy as np
 import pandas as pd
 import os
-from scipy.stats import wasserstein_distance
-import pandas as pd
-import scanpy as sc
 import warnings
-from scipy.stats import spearmanr, pearsonr
-from scipy.spatial import distance_matrix
-from sklearn.metrics import matthews_corrcoef
 import torch
-from scipy.spatial.distance import cdist
-import sys
-from os.path import join
-from IPython.display import display
-import squidpy as sq
 
 from model_stDiff.stDiff_model import DiT_stDiff
-from model_stDiff.stDiff_scheduler import NoiseScheduler
 from model_stDiff.stDiff_train import normal_train_stDiff
-from model_stDiff.sample import sample_stDiff
-from process_stDiff.result_analysis import clustering_metrics
+from process_stDiff.data import *
+import anndata as ad
+from spared.datasets import get_dataset
+
+from loader import *
+from utils import *
 
 warnings.filterwarnings('ignore')
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
-from process_stDiff.data import *
-import pdb
-
-import anndata as ad
-from spared.datasets import get_dataset
-from spared.datasets import SpatialDataset
-from spared.metrics import get_metrics
-
-from loader import *
-from utils import *
-import argparse
-
-parser = argparse.ArgumentParser(description='Code for expression prediction using contrastive learning implementation.')
-# Dataset parameters #####################################################################################################################################################################
-parser.add_argument('--dataset', type=str, default='villacampa_lung_organoid',  help='Dataset to use.')
-parser.add_argument('--prediction_layer',  type=str,  default='c_d_log1p', help='The prediction layer from the dataset to use.')
-parser.add_argument('--lr',type=float,default=0.00016046744893538737,help='lr to use')
-parser.add_argument('--save_path',type=str,default='ckpt/model.pt',help='name model save path')
+# Get parser and parse arguments
+parser = get_main_parser()
 args = parser.parse_args()
+args_dict = vars(args) #Not uses, maybe later usage
+
 
 #Training
-#lr = 0.00016046744893538737 
 lr = args.lr
-depth = 6 
-num_epoch = 3000
-diffusion_step = 1500 
-batch_size = 256
-hidden_size = 512 
-head = 16
+depth = args.depth
+num_epoch = args.num_epoch
+diffusion_step = args.diffusion_steps
+batch_size = args.batch_size
+hidden_size = args.hidden_size
+head = args.head
 device = torch.device('cuda')
 
 #SPARED
@@ -66,47 +43,14 @@ mask_exp_matrix(adata=dataset, pred_layer=pred_layer, mask_prob_tensor=prob_tens
 
 ### Define splits
 ## Train
-train_adata = dataset[dataset.obs["split"]=="train"]
-# Define data
-st_data_train = train_adata.layers[pred_layer] 
-# Define masked data
-st_data_masked_train = train_adata.layers["masked_expression_matrix"] 
-# Define mask
-mask_train = train_adata.layers["random_mask"]
-mask_train = (1-mask_train)
-# Normalize data
-max_train = st_data_train.max()
-st_data_train = st_data_train/max_train
-st_data_masked_train = st_data_masked_train/max_train
+st_data_train, st_data_masked_train, mask_train, max_train = define_splits(dataset, 'train', pred_layer)
 
 ## Validation
-valid_adata = dataset[dataset.obs["split"]=="val"]
-# Define data
-st_data_valid = valid_adata.layers[pred_layer] 
-# Define masked data
-st_data_masked_valid = valid_adata.layers["masked_expression_matrix"] 
-# Define mask
-mask_valid = valid_adata.layers["random_mask"]
-mask_valid = (1-mask_valid)
-# Nomalize data
-max_valid = st_data_valid.max()
-st_data_valid = st_data_valid/max_valid
-st_data_masked_valid = st_data_masked_valid/max_valid
+st_data_valid, st_data_masked_valid, mask_valid, max_valid = define_splits(dataset, 'val', pred_layer)
 
 ## Test
 if "test" in splits:
-    test_adata = dataset[dataset.obs["split"]=="test"]
-    # Define data
-    st_data_test = test_adata.layers[pred_layer] 
-    # Define masked data
-    st_data_masked_test = test_adata.layers["masked_expression_matrix"] 
-    # Define mask
-    mask_test = test_adata.layers["random_mask"]
-    mask_test = (1-mask_test)
-    # Normalize data
-    max_test = st_data_test.max()
-    st_data_test = st_data_test/max_test
-    st_data_masked_test = st_data_masked_test/max_test
+    st_data_test, st_data_masked_test, mask_test, max_test = define_splits(dataset, 'test', pred_layer)
 
 # Define train and valid dataloaders
 train_dataloader = get_data_loader(
@@ -132,83 +76,13 @@ if 'test' in splits:
     batch_size=batch_size, 
     is_shuffle=True)
 
-"""
-#Get neighbors per split
-list_nn = get_neigbors_dataset('villacampa_lung_organoid', 'c_t_log1p')
 
-list_nn_train = []
-for slide in list_nn[0]:
-    list_nn_train += slide
-
-list_nn_valid = []
-for slide in list_nn[1]:
-    list_nn_valid += slide
-
-if len(list_nn) == 3:
-    list_nn_test = []
-    for slide in list_nn[2]:
-        list_nn_test += slide
-
-def prepare_data(list_nn): 
-    #returns the data as concatenated tensor as well as the masked data
-    concatenate_tensor = torch.cat(list_nn, dim=1).T
-    array_data = np.array(concatenate_tensor)
-    mask_array = np.ones(array_data.shape)
-    mask_array[:,0] = 0
-    masked_data = array_data*mask_array
-    return array_data, masked_data
-
-
-train_data, train_masked_data = prepare_data(list_nn_train)
-train_dataloader = get_data_loader(
-    train_data, 
-    train_masked_data, 
-list_nn_train = []
-for slide in list_nn[0]:
-    list_nn_train += slide
-
-list_nn_valid = []
-for slide in list_nn[1]:
-    list_nn_valid += slide
-
-if len(list_nn) == 3:
-    list_nn_test = []
-    for slide in list_nn[2]:
-        list_nn_test += slide
-
-def prepare_data(list_nn): 
-    #returns the data as concatenated tensor as well as the masked data
-    concatenate_tensor = torch.cat(list_nn, dim=1).T
-    array_data = np.array(concatenate_tensor)
-    mask_array = np.ones(array_data.shape)
-    mask_array[:,0] = 0
-    masked_data = array_data*mask_array
-    return array_data, masked_data
-
-
-train_data, train_masked_data = prepare_data(list_nn_train)
-train_dataloader = get_data_loader(
-    train_data, 
-    train_masked_data, 
-    batch_size=batch_size, 
-    is_shuffle=True)
-
-valid_data, valid_masked_data = prepare_data(list_nn_valid)
-valid_dataloader = get_data_loader(
-    valid_masked_data, 
-    valid_masked_data, 
-    batch_size=batch_size, 
-    is_shuffle=False)
-    
-"""
-
+# seed everything
 seed = 1202
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
 
-#mask = np.ones((num_nn), dtype='float32')
-#mask[0] = 0
 num_nn = dataset.shape[1]
 
 model = DiT_stDiff(
@@ -223,7 +97,6 @@ model = DiT_stDiff(
 
 model.to(device)
 
-diffusion_step = diffusion_step
 save_path_prefix = args.save_path
 # train
 model.train()
@@ -244,22 +117,19 @@ if not os.path.isfile(save_path_prefix):
                             save_path=save_path_prefix,
                             dataset_name=args.dataset)
 
-    #torch.save(model.state_dict(), save_path_prefix)
-#else:
-#    model.load_state_dict(torch.load(save_path_prefix))
 
 if "test" in splits:
     model.load_state_dict(torch.load(save_path_prefix))
     
-    test_metrics = test_function(test_dataloader=test_dataloader, 
-                                 test_data=st_data_test, 
-                                 test_masked_data=st_data_masked_test, 
+    test_metrics = inference_function(dataloader=test_dataloader, 
+                                 data=st_data_test, 
+                                 masked_data=st_data_masked_test, 
                                  mask=mask_test,
                                  max_norm = max_test,
                                  model=model,
                                  diffusion_step=diffusion_step,
                                  device=device)
 
-    save_metrics_to_csv("/home/dvegaa/stDiff_Spared/output/metrics.csv", args.dataset, "test", test_metrics)
-    #print(test_metrics)
+    save_metrics_to_csv(os.path.join("output","metrics.csv"), args.dataset, "test", test_metrics)
+
 
