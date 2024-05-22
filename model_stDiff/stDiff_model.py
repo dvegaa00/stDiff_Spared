@@ -1,11 +1,14 @@
 import torch
 import torch.nn as nn
-import numpy as np
 import math
 import einops
 from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
-import sys
 
+#Seed
+seed = 1202
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
 
 class Attention2(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0., proj_drop=0.):

@@ -9,6 +9,12 @@ from .stDiff_scheduler import NoiseScheduler
 from utils import *
 import matplotlib.pyplot as plt
 
+#Seed
+seed = 1202
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+
 def normal_train_stDiff(model,
                  train_dataloader,
                  valid_dataloader,
@@ -16,6 +22,7 @@ def normal_train_stDiff(model,
                  valid_masked_data,
                  mask_valid,
                  max_norm,
+                 n_decimals,
                  lr: float = 1e-4,
                  num_epoch: int = 1400,
                  pred_type: str = 'noise',
@@ -113,7 +120,8 @@ def normal_train_stDiff(model,
                                         mask=mask_valid,
                                         max_norm = max_norm[1],
                                         diffusion_step=diffusion_step,
-                                        device=device)
+                                        device=device,
+                                        n_decimals=n_decimals)
 
             if metrics_dict["MSE"] < min_mse:
                 min_mse = metrics_dict["MSE"]

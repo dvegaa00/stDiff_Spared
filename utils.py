@@ -29,9 +29,9 @@ def get_main_parser():
     # Dataset parameters #####################################################################################################################################################################
     parser.add_argument('--dataset', type=str, default='villacampa_lung_organoid',  help='Dataset to use.')
     parser.add_argument('--prediction_layer',  type=str,  default='c_d_log1p', help='The prediction layer from the dataset to use.')
+    parser.add_argument('--save_path',type=str,default='ckpt/model.pt',help='name model save path')
     # Train parameters #######################################################################################################################################################################
     parser.add_argument('--lr',type=float,default=0.00016046744893538737,help='lr to use')
-    parser.add_argument('--save_path',type=str,default='ckpt/model.pt',help='name model save path')
     parser.add_argument('--num_epoch', type=int, default=3000, help='Number of training epochs')
     parser.add_argument('--diffusion_steps', type=int, default=1500, help='Number of diffusion steps')
     parser.add_argument('--batch_size', type=int, default=256, help='The batch size to train model')
@@ -116,7 +116,7 @@ def mask_exp_matrix(adata: ad.AnnData, pred_layer: str, mask_prob_tensor: torch.
 
     return adata
 
-def inference_function(dataloader, data, masked_data, model, mask, max_norm, diffusion_step, device):
+def inference_function(dataloader, data, masked_data, model, mask, max_norm, diffusion_step, device, n_decimals):
     """
     Function designed to do inference for validation and test steps.
     Params:
@@ -127,7 +127,7 @@ def inference_function(dataloader, data, masked_data, model, mask, max_norm, dif
         -mask (np.array): mask used for data
         -max_norm (float): max value of st data
         -diffusion_step (int): diffusion step set in argparse
-        -device (): device cpu or cuda
+        -device (str): device cpu or cuda
 
     Returns:
         -metrics_dict (dict): dictionary with all the metrics
@@ -163,8 +163,12 @@ def inference_function(dataloader, data, masked_data, model, mask, max_norm, dif
     mask_boolean = (1-mask).astype(bool)
     data = data*max_norm
     imputation = imputation*max_norm
+
+    if n_decimals != None:
+        data = np.around(data, decimals=n_decimals)
+        imputation = np.around(imputation, decimals=n_decimals)
     metrics_dict = get_metrics(data, imputation, mask_boolean)
-    return metrics_dict
+    return metrics_dict, data[0][0]
 
 def define_splits(dataset, split:str, pred_layer:str):
     """
@@ -210,9 +214,11 @@ def save_metrics_to_csv(path, dataset_name, split, metrics):
     """
     Creates or edits a .csv file with the dataset name as the title and the metrics dictionary as a string.
 
-    :param path: Path to the .csv file
-    :param dataset_name: The name of the dataset to be used as the title
-    :param metrics: Dictionary containing metric names and values
+    Params:
+
+        -path (str): Path to the .csv file
+        -dataset_name (str): The name of the dataset to be used as the title
+        -metrics (dict): Dictionary containing metric names and values
     """
     # Ensure the directory for the path exists
     #directory = os.path.dirname(file_path)
@@ -233,3 +239,26 @@ def save_metrics_to_csv(path, dataset_name, split, metrics):
 
         # Write the dataset name and the stringified metrics
         writer.writerow([dataset_name, split, str(metrics["MSE"]), str(metrics["PCC-Gene"])])
+
+def save_metrics_to_csv_precision_analysis(path, dataset_name, split, metrics, n_decimals, example):
+    """
+    This function is desgined to store the results of a precision analysis. Saves the dataset name, MSE, PCC and the number of decimals
+    Params:
+
+        -path (str): Path to the .csv file
+        -dataset_name (str): The name of the dataset to be used as the title
+        -metrics (dict): Dictionary containing metric names and values
+        -n_decimals (int): number of decimals in the gt and prediction.
+    """
+
+    file_exists = os.path.isfile(path)
+
+    with open(path, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        
+        # Write the title (dataset name) if the file does not exist
+        if not file_exists:
+            writer.writerow(["Dataset", "Split",'Decimals', 'Example', "MSE", "PCC-Gene"])
+
+        # Write the dataset name and the stringified metrics
+        writer.writerow([dataset_name, split, str(n_decimals), str(example), str(metrics["MSE"]), str(metrics["PCC-Gene"])])

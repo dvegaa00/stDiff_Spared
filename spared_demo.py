@@ -31,6 +31,7 @@ batch_size = args.batch_size
 hidden_size = args.hidden_size
 head = args.head
 device = torch.device('cuda')
+n_decimals = None
 
 #SPARED
 adata = get_dataset(args.dataset)
@@ -38,7 +39,9 @@ dataset=adata.adata
 splits = dataset.obs["split"].unique().tolist()
 pred_layer = args.prediction_layer
 
+#Masking
 prob_tensor = get_mask_prob_tensor(masking_method="mask_prob", dataset=adata, mask_prob=0.3, scale_factor=0.8)
+#Add neccesary masking layers in the adata object
 mask_exp_matrix(adata=dataset, pred_layer=pred_layer, mask_prob_tensor=prob_tensor, device=device)
 
 ### Define splits
@@ -96,7 +99,6 @@ model = DiT_stDiff(
 )
 
 model.to(device)
-
 save_path_prefix = args.save_path
 # train
 model.train()
@@ -110,6 +112,7 @@ if not os.path.isfile(save_path_prefix):
                             mask_valid = mask_valid,
                             max_norm = [max_train, max_valid],
                             lr=lr,
+                            n_decimals=n_decimals,
                             num_epoch=num_epoch,
                             diffusion_step=diffusion_step,
                             device=device,
@@ -120,16 +123,16 @@ if not os.path.isfile(save_path_prefix):
 
 if "test" in splits:
     model.load_state_dict(torch.load(save_path_prefix))
-    
-    test_metrics = inference_function(dataloader=test_dataloader, 
-                                 data=st_data_test, 
-                                 masked_data=st_data_masked_test, 
-                                 mask=mask_test,
-                                 max_norm = max_test,
-                                 model=model,
-                                 diffusion_step=diffusion_step,
-                                 device=device)
+    num_decimals = [1,2,3,4,5,6,7]
+    for n_decimals in num_decimals:
+        test_metrics, example = inference_function(dataloader=test_dataloader, 
+                                    data=st_data_test, 
+                                    masked_data=st_data_masked_test, 
+                                    mask=mask_test,
+                                    max_norm = max_test,
+                                    model=model,
+                                    diffusion_step=diffusion_step,
+                                    device=device,
+                                    n_decimals=n_decimals)
 
-    save_metrics_to_csv(os.path.join("output","metrics.csv"), args.dataset, "test", test_metrics)
-
-
+        save_metrics_to_csv_precision_analysis(os.path.join("output","precision_analysis.csv"), args.dataset, "test", test_metrics, n_decimals, example)

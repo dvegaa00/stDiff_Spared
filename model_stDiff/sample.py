@@ -1,8 +1,12 @@
 import torch
 from tqdm import tqdm
 import numpy as np
-import pdb
 
+#Seed
+seed = 1202
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
 
 def model_sample_stDiff(model, device, dataloader, total_sample, time, is_condi, condi_flag):
     noise = []

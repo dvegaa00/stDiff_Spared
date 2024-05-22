@@ -4,6 +4,12 @@ from torch.nn import functional as F
 import numpy as np
 import math
 
+#Seed
+seed = 1202
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+
 def betas_for_alpha_bar(num_diffusion_timesteps, alpha_bar, max_beta=0.999):
     """ beta schedule
     Create a beta schedule that discretizes the given alpha_t_bar function,
