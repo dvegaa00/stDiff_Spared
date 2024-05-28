@@ -3,9 +3,15 @@ import matplotlib.pyplot as plt
 from torch.nn import functional as F
 import numpy as np
 import math
+from utils import get_main_parser
+
+# Get parser and parse arguments
+parser = get_main_parser()
+args = parser.parse_args()
+args_dict = vars(args)
 
 #Seed
-seed = 1202
+seed = args.seed
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)

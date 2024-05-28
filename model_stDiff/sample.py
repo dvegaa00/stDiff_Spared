@@ -1,9 +1,15 @@
 import torch
 from tqdm import tqdm
 import numpy as np
+from utils import get_main_parser
+
+# Get parser and parse arguments
+parser = get_main_parser()
+args = parser.parse_args()
+args_dict = vars(args)
 
 #Seed
-seed = 1202
+seed = args.seed
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)

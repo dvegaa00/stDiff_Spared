@@ -8,9 +8,16 @@ import os
 from .stDiff_scheduler import NoiseScheduler
 from utils import *
 import matplotlib.pyplot as plt
+import wandb
+import datetime 
+
+# Get parser and parse arguments
+parser = get_main_parser()
+args = parser.parse_args()
+args_dict = vars(args)
 
 #Seed
-seed = 1202
+seed = args.seed
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 torch.cuda.manual_seed_all(seed)
@@ -22,7 +29,8 @@ def normal_train_stDiff(model,
                  valid_masked_data,
                  mask_valid,
                  max_norm,
-                 n_decimals,
+                 wandb_logger,
+                 args,
                  lr: float = 1e-4,
                  num_epoch: int = 1400,
                  pred_type: str = 'noise',
@@ -30,8 +38,7 @@ def normal_train_stDiff(model,
                  device=torch.device('cuda'),
                  is_tqdm: bool = True,
                  is_tune: bool = False,
-                 save_path = "ckpt/demo_spared.pt",
-                 dataset_name=None):
+                 save_path = "ckpt/demo_spared.pt"):
     #mask = None 
     """
 
@@ -64,6 +71,8 @@ def normal_train_stDiff(model,
 
     model.train()
     min_mse = np.inf
+    best_mse = 0
+    best_pcc = 0
     loss_visualization = []
     for epoch in t_epoch:
         epoch_loss = 0.
@@ -104,35 +113,42 @@ def normal_train_stDiff(model,
             optimizer.zero_grad()
             epoch_loss += loss.item()
 
-        epoch_loss = epoch_loss / (i + 1)  # type: ignore
-        loss_visualization.append(epoch_loss)
+        #epoch_loss = epoch_loss / (i + 1)  # type: ignore
+        wandb_logger.log({"Loss": epoch_loss})
+        #loss_visualization.append(epoch_loss)
         if is_tqdm:
             t_epoch.set_postfix_str(f'{pred_type} loss:{epoch_loss:.5f}')  # type: ignore
         if is_tune:
             session.report({'loss': epoch_loss})
         
         # compare MSE metrics and save best model
-        if epoch % (num_epoch//10) == 0:
-            metrics_dict = inference_function(dataloader=valid_dataloader, 
+        if epoch % (num_epoch//10) == 0 and epoch != 0:
+            metrics_dict, imputation_data = inference_function(dataloader=valid_dataloader, 
                                         data=valid_data, 
                                         masked_data=valid_masked_data, 
                                         model=model,
                                         mask=mask_valid,
                                         max_norm = max_norm[1],
                                         diffusion_step=diffusion_step,
-                                        device=device,
-                                        n_decimals=n_decimals)
+                                        device=device
+                                        )
 
             if metrics_dict["MSE"] < min_mse:
                 min_mse = metrics_dict["MSE"]
+                best_mse = metrics_dict["MSE"]
+                best_pcc = metrics_dict["PCC-Gene"]
                 torch.save(model.state_dict(), save_path)
-            save_metrics_to_csv(os.path.join("output","metrics.csv"), dataset_name, "valid", metrics_dict)
+            #save_metrics_to_csv(args.metrics_path, args.dataset, "valid", metrics_dict)
+            wandb_logger.log({"MSE": metrics_dict["MSE"], "PCC": metrics_dict["PCC-Gene"]})
+    # Save the best MSE and best PCC on the validation set
+    wandb_logger.log({"best_MSE":best_mse, "best_PCC": best_pcc})
     
-    #Plot loss    
-    epoch_array = np.arange(num_epoch)
-    loss_visualization = np.array(loss_visualization)
-    #Ploting auxiliar function
-    plot_loss(epoch_array, loss_visualization, dataset_name)
+         
+    ## Plot loss    
+    #epoch_array = np.arange(num_epoch)
+    #loss_visualization = np.array(loss_visualization)
+    ## Ploting auxiliar function
+    #plot_loss(epoch_array, loss_visualization, dataset_name)
     
         
 

@@ -10,6 +10,8 @@ violin/
 datasets/
 setup.py
 ckpt/
+ckpt_W&B/
+ckpt_seed_2/
 stDiff.egg-info/
 stDiff/
 dist/
@@ -22,3 +24,7 @@ output/
 spared/
 loss_figures/
 run_completion.sh
+run_seed_experiment.sh
+results_visualizations/
+wandb/
+model_transformer/
