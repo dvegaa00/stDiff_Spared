@@ -39,9 +39,9 @@ def main():
     ### Wandb 
     exp_name = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     wandb.login()
-    wandb.init(project="Diffusion_Models", entity="sepal_v2", name=exp_name)
+    wandb.init(project="Diffusion_Models_NN", entity="sepal_v2", name=exp_name)
     wandb.config = {"lr": args.lr, "dataset": args.dataset}
-    wandb.log({"lr": args.lr, "dataset": args.dataset, "num_epoch": args.num_epoch})
+    wandb.log({"lr": args.lr, "dataset": args.dataset, "num_epoch": args.num_epoch, "depth": args.depth, "hidden_size": args.hidden_size})
     
     ### Parameters
     # Define the training parameters
@@ -66,33 +66,21 @@ def main():
     mask_exp_matrix(adata=adata, pred_layer=pred_layer, mask_prob_tensor=prob_tensor, device=device)
 
     # Get neighbors
-    #neighbors = 7
-    #list_nn = get_neigbors_dataset(adata, pred_layer, args.num_hops)
-    #list_nn_masked = get_neigbors_dataset(adata, 'masked_expression_matrix', args.num_hops)
+    neighbors = 7
+    list_nn = get_neigbors_dataset(adata, pred_layer, args.num_hops)
+    list_nn_masked = get_neigbors_dataset(adata, 'masked_expression_matrix', args.num_hops)
     
     ### Define splits
     ## Train
-    st_data_train, st_data_masked_train, mask_train, max_train = define_splits(adata, 'train', pred_layer)
-    #st_data_train, st_data_masked_train, mask_train, max_train = define_split_nn(list_nn, list_nn_masked, "train")
+    st_data_train, st_data_masked_train, mask_train, max_train = define_split_nn_center(list_nn, list_nn_masked, "train")
 
     ## Validation
-    st_data_valid, st_data_masked_valid, mask_valid, max_valid = define_splits(adata, 'val', pred_layer)
-    #st_data_valid, st_data_masked_valid, mask_valid, max_valid = define_split_nn(list_nn, list_nn_masked, "val")
-    #min_spots = min(st_data_train.shape[0], st_data_valid.shape[0])
+    st_data_valid, st_data_masked_valid, mask_valid, max_valid = define_split_nn_center(list_nn, list_nn_masked, "val")
+
     ## Test
     if "test" in splits:
-        st_data_test, st_data_masked_test, mask_test, max_test = define_splits(adata, 'test', pred_layer)
-        #st_data_test, st_data_masked_test, mask_test, max_test = define_split_nn(list_nn, list_nn_masked, "test")
-        #min_spots = min(min_spots, st_data_test.shape[0])
-        
-        #FIXME: RESHAPE TEST DATA FOR SPOT EXPERIMENT
-        #st_data_test, st_data_masked_test, mask_test = st_data_test[:min_spots,:], st_data_masked_test[:min_spots,:], mask_test[:min_spots,:] 
-  
-    # RESHAPE TRAIN AND VALID DATA FOR SPOT EXPERIMENT
-    #st_data_train, st_data_masked_train, mask_train = st_data_train[:min_spots,:], st_data_masked_train[:min_spots,:], mask_train[:min_spots,:]
-    #st_data_valid, st_data_masked_valid, mask_valid = st_data_valid[:min_spots,:], st_data_masked_valid[:min_spots,:], mask_valid[:min_spots,:]
-    
-    # FIXME: DATA NEEDS TO BE TRANSPOSED FOR SPOT EXPERIMENT
+        st_data_test, st_data_masked_test, mask_test, max_test = define_split_nn_center(list_nn, list_nn_masked, "test")
+
     # Define train and valid dataloaders
     train_dataloader = get_data_loader(
         st_data_train, 
@@ -118,17 +106,15 @@ def main():
         is_shuffle=True)
 
     ### DIFFUSION MODEL ##########################################################################
-    # FIXME: num_nn changed to number of spots instead of number of genes (adata.shape[1]) FOR SPOT EXPERIMENT
-    #num_nn = adata.shape[1]*neighbors
-    num_nn = adata.shape[1]
-    # Define the model
+    num_nn = adata.shape[1]*neighbors
+
     """
+    # Define the model
     if num_nn > 1024:
         hidden_size = 1024
     if num_nn > 2048:
         hidden_size = 2048
     """
-    #wandb.log({"hidden_size": hidden_size, "number_spots": min_spots})
     
     model = DiT_stDiff(
         input_size=num_nn,  
@@ -141,10 +127,9 @@ def main():
     
     model.to(device)
     #save_path_prefix = args.save_path + args.dataset + "_" + str(args.num_hops) + ".pt"
-    save_path_prefix = args.save_path + args.dataset + "_" + str(args.depth) + "_" + str(args.lr) + "_" + str(args.num_epoch) + ".pt"
-    #model.load_state_dict(torch.load(os.path.join("/home/dvegaa/stDiff_Spared/ckpt_exp/", "villacampa_lung_organoid_6_0.0001.pt")))
+    save_path_prefix = args.save_path + args.dataset + "_" + str(args.depth) + "_" + str(args.hidden_size) + "_" + str(args.lr) + ".pt"
+
     ### Train the model
-    # FIXME: train function parameters for valid data are also transposed FOR SPOT EXPERIMENT
     model.train()
     if not os.path.isfile(save_path_prefix):
         normal_train_stDiff(model,
@@ -177,9 +162,6 @@ def main():
                                     device=device)
 
         adata_test = adata[adata.obs["split"]=="test"]
-        # FIXME: (siguiente linea comentada por ahora) 
-        # ValueError: Value passed for key 'diff_pred' is of incorrect shape. Values of layers must match dimensions (0, 1) of parent. Value had shape (439, 128) while it should have had (533, 128).
-        #adata_test.layers["diff_pred"] = imputation_data.T
         #save_metrics_to_csv(args.metrics_path, args.dataset, "test", test_metrics)
         wandb.log({"test_MSE": test_metrics["MSE"], "test_PCC": test_metrics["PCC-Gene"]})
         #print(test_metrics)

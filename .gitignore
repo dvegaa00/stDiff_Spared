@@ -28,3 +28,11 @@ run_seed_experiment.sh
 results_visualizations/
 wandb/
 model_transformer/
+*.sh
+ckpt_exp/
+ckpt_nn/
+ckpt_nn_center/
+ckpt_nn_LRS/
+ckpt_noise_loss_7/
+ckpt_spots/
+

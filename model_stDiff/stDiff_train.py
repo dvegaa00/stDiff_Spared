@@ -63,6 +63,7 @@ def normal_train_stDiff(model,
     model.to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=600, gamma=0.1)
 
     if is_tqdm:
         t_epoch = tqdm(range(num_epoch), ncols=100)
@@ -77,7 +78,7 @@ def normal_train_stDiff(model,
     for epoch in t_epoch:
         epoch_loss = 0.
         for i, (x, x_cond, mask) in enumerate(train_dataloader): 
-            #The mask is a binary array, the 1's are the masked data
+            #The mask is a binary array, the 1's are the masked data (0 in the values we want to predict)
             x, x_cond = x.float().to(device), x_cond.float().to(device)
             # x.shape: torch.Size([2048, 33])
             # x_cond.shape: torch.Size([2048, 33])
@@ -98,6 +99,7 @@ def normal_train_stDiff(model,
             # mask.shape: torch.Size([33])
             
             x_noisy = x_t * (1 - mask) + x * mask
+            # x_t en los valores masqueados y siempre x original en los valores no masquados
             # x_noisy.shape: torch.Size([2048, 33])
             
             noise_pred = model(x_noisy, t=timesteps.to(device), y=x_cond) 
@@ -106,23 +108,28 @@ def normal_train_stDiff(model,
             # loss = criterion(noise_pred, noise)
             #max_train = torch.tensor(max_norm[0]).to(device)
             #loss = criterion((noise*(1-mask))*max_train, (noise_pred*(1-mask))*max_train)
-            loss = criterion(noise*(1-mask), noise_pred*(1-mask))
+            mask_boolean = (1-mask).bool()
+            #loss = criterion(noise*(1-mask), noise_pred*(1-mask))
+            loss = criterion(noise[mask_boolean], noise_pred[mask_boolean])
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)  # type: ignore
             optimizer.step()
             optimizer.zero_grad()
             epoch_loss += loss.item()
 
+        scheduler.step()  # Update the learning rate
         #epoch_loss = epoch_loss / (i + 1)  # type: ignore
         wandb_logger.log({"Loss": epoch_loss})
         #loss_visualization.append(epoch_loss)
         if is_tqdm:
-            t_epoch.set_postfix_str(f'{pred_type} loss:{epoch_loss:.5f}')  # type: ignore
+            current_lr = scheduler.get_last_lr()[0]  # Get the current learning rate
+            t_epoch.set_postfix_str(f'{pred_type} loss:{epoch_loss:.5f} lr:{current_lr:.6f}')  # type: ignore
         if is_tune:
             session.report({'loss': epoch_loss})
         
         # compare MSE metrics and save best model
         if epoch % (num_epoch//10) == 0 and epoch != 0:
+            
             metrics_dict, imputation_data = inference_function(dataloader=valid_dataloader, 
                                         data=valid_data, 
                                         masked_data=valid_masked_data, 

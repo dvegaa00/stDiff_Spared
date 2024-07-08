@@ -39,9 +39,9 @@ def main():
     ### Wandb 
     exp_name = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     wandb.login()
-    wandb.init(project="Diffusion_Models", entity="sepal_v2", name=exp_name)
+    wandb.init(project="Diffusion_Models_Spots", entity="sepal_v2", name=exp_name)
     wandb.config = {"lr": args.lr, "dataset": args.dataset}
-    wandb.log({"lr": args.lr, "dataset": args.dataset, "num_epoch": args.num_epoch})
+    wandb.log({"lr": args.lr, "dataset": args.dataset, "num_epoch": args.num_epoch, "depth": args.depth, "hidden_size": args.hidden_size, "save_path": args.save_path})
     
     ### Parameters
     # Define the training parameters
@@ -65,34 +65,26 @@ def main():
     # Add neccesary masking layers in the adata object
     mask_exp_matrix(adata=adata, pred_layer=pred_layer, mask_prob_tensor=prob_tensor, device=device)
 
-    # Get neighbors
-    #neighbors = 7
-    #list_nn = get_neigbors_dataset(adata, pred_layer, args.num_hops)
-    #list_nn_masked = get_neigbors_dataset(adata, 'masked_expression_matrix', args.num_hops)
-    
     ### Define splits
     ## Train
-    st_data_train, st_data_masked_train, mask_train, max_train = define_splits(adata, 'train', pred_layer)
-    #st_data_train, st_data_masked_train, mask_train, max_train = define_split_nn(list_nn, list_nn_masked, "train")
+    st_data_train, st_data_masked_train, mask_train, max_train = define_splits_spot(adata, 'train', pred_layer)
 
     ## Validation
-    st_data_valid, st_data_masked_valid, mask_valid, max_valid = define_splits(adata, 'val', pred_layer)
-    #st_data_valid, st_data_masked_valid, mask_valid, max_valid = define_split_nn(list_nn, list_nn_masked, "val")
-    #min_spots = min(st_data_train.shape[0], st_data_valid.shape[0])
+    st_data_valid, st_data_masked_valid, mask_valid, max_valid = define_splits_spot(adata, 'val', pred_layer)
+    min_spots = min(st_data_train.shape[1], st_data_valid.shape[1])
+    
     ## Test
     if "test" in splits:
-        st_data_test, st_data_masked_test, mask_test, max_test = define_splits(adata, 'test', pred_layer)
-        #st_data_test, st_data_masked_test, mask_test, max_test = define_split_nn(list_nn, list_nn_masked, "test")
-        #min_spots = min(min_spots, st_data_test.shape[0])
+        st_data_test, st_data_masked_test, mask_test, max_test = define_splits_spot(adata, 'test', pred_layer)
+        min_spots = min(min_spots, st_data_test.shape[1])
         
-        #FIXME: RESHAPE TEST DATA FOR SPOT EXPERIMENT
-        #st_data_test, st_data_masked_test, mask_test = st_data_test[:min_spots,:], st_data_masked_test[:min_spots,:], mask_test[:min_spots,:] 
+        # RESHAPE TEST DATA FOR SPOT EXPERIMENT
+        st_data_test, st_data_masked_test, mask_test = st_data_test[:, :min_spots], st_data_masked_test[:, :min_spots], mask_test[:, :min_spots]
   
     # RESHAPE TRAIN AND VALID DATA FOR SPOT EXPERIMENT
-    #st_data_train, st_data_masked_train, mask_train = st_data_train[:min_spots,:], st_data_masked_train[:min_spots,:], mask_train[:min_spots,:]
-    #st_data_valid, st_data_masked_valid, mask_valid = st_data_valid[:min_spots,:], st_data_masked_valid[:min_spots,:], mask_valid[:min_spots,:]
-    
-    # FIXME: DATA NEEDS TO BE TRANSPOSED FOR SPOT EXPERIMENT
+    st_data_train, st_data_masked_train, mask_train = st_data_train[:, :min_spots], st_data_masked_train[:, :min_spots], mask_train[:, :min_spots]
+    st_data_valid, st_data_masked_valid, mask_valid = st_data_valid[:, :min_spots], st_data_masked_valid[:, :min_spots], mask_valid[:, :min_spots]
+
     # Define train and valid dataloaders
     train_dataloader = get_data_loader(
         st_data_train, 
@@ -118,9 +110,8 @@ def main():
         is_shuffle=True)
 
     ### DIFFUSION MODEL ##########################################################################
-    # FIXME: num_nn changed to number of spots instead of number of genes (adata.shape[1]) FOR SPOT EXPERIMENT
-    #num_nn = adata.shape[1]*neighbors
-    num_nn = adata.shape[1]
+    # num_nn changed to number of min spots FOR SPOT EXPERIMENT
+    num_nn = min_spots
     # Define the model
     """
     if num_nn > 1024:
